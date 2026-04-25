@@ -1,0 +1,16 @@
+{
+  "name": "caddy-ui",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w backend && npm run build -w frontend",
+    "dev": "npm run dev -w backend",
+    "test": "npm run test -w shared && npm run test -w backend && npm run test -w frontend"
+  }
+}
+

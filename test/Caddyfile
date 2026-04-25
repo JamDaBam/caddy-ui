@@ -1,0 +1,28 @@
+# Example Caddyfile
+{
+	email admin@example.com
+}
+
+example.com {
+	encode zstd gzip
+
+	root * /var/www/html
+	file_server
+
+	# Reverse-proxy API requests to a local app.
+	handle /api/* {
+		reverse_proxy localhost:3000
+	}
+
+	# Basic security headers for static content.
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
