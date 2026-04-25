@@ -18,13 +18,27 @@ const apiMocks = vi.hoisted(() => ({
     ],
     dirty: false,
     sourcePath: "/etc/caddy/Caddyfile",
-    warnings: []
+    warnings: [],
+    backend: {
+      storageMode: "local-file",
+      reloadMode: "command",
+      reloadEnabled: true,
+      sourcePath: "/etc/caddy/Caddyfile",
+      sourceDescription: "Local Caddyfile at /etc/caddy/Caddyfile"
+    }
   })),
   fetchHealth: vi.fn(async () => ({
     ok: true,
     dirty: false,
     reloadEnabled: true,
-    sourcePath: "/etc/caddy/Caddyfile"
+    sourcePath: "/etc/caddy/Caddyfile",
+    backend: {
+      storageMode: "local-file",
+      reloadMode: "command",
+      reloadEnabled: true,
+      sourcePath: "/etc/caddy/Caddyfile",
+      sourceDescription: "Local Caddyfile at /etc/caddy/Caddyfile"
+    }
   })),
   createEntry: vi.fn(),
   updateEntry: vi.fn(),
@@ -49,6 +63,7 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("example.com")).toBeTruthy();
     expect(screen.getByText("Top-level site entries")).toBeTruthy();
+    expect(screen.getByText("local-file storage • command reload")).toBeTruthy();
   });
 
   it("shows local edit state and enables saving after editing", async () => {

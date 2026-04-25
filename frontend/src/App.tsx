@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { CaddyEntry } from "@caddy-ui/shared";
+import type { BackendModeInfo, CaddyEntry } from "@caddy-ui/shared";
 
 import { applyChanges, createEntry, deleteEntry, fetchEntries, fetchHealth, updateEntry } from "./api";
 
@@ -21,6 +21,7 @@ export function App() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reloadEnabled, setReloadEnabled] = useState(false);
+  const [backend, setBackend] = useState<BackendModeInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const activeEntry = editor.id ? entries.find((entry) => entry.id === editor.id) ?? null : null;
@@ -30,6 +31,7 @@ export function App() {
   const canSaveDraft = Boolean(editor.label.trim()) && localDirty;
   const statusLabel = localDirty ? "Local edits not saved" : dirty ? "Draft staged" : "Live config";
   const statusClassName = localDirty ? "badge badge-alert" : dirty ? "badge badge-warn" : "badge";
+  const backendSummary = backend ? `${backend.storageMode} storage • ${backend.reloadMode} reload` : null;
 
   async function load() {
     setLoading(true);
@@ -39,6 +41,7 @@ export function App() {
       setEntries(entriesResponse.entries);
       setDirty(entriesResponse.dirty);
       setReloadEnabled(healthResponse.reloadEnabled);
+      setBackend(healthResponse.backend ?? entriesResponse.backend);
       if (entriesResponse.entries.length > 0 && !editor.id) {
         setEditor({
           id: entriesResponse.entries[0].id,
@@ -120,6 +123,7 @@ export function App() {
 
       setEntries(response.entries);
       setDirty(response.dirty);
+      setBackend(response.backend);
       const latest = response.entries.find((entry) => entry.label === editor.label) ?? response.entries.at(-1);
       if (latest) {
         selectEntry(latest);
@@ -146,6 +150,7 @@ export function App() {
       const response = await deleteEntry(editor.id);
       setEntries(response.entries);
       setDirty(response.dirty);
+      setBackend(response.backend);
       const nextEntry = response.entries[0];
       setEditor(
         nextEntry
@@ -171,6 +176,7 @@ export function App() {
         throw new Error(response.error ?? "Apply failed");
       }
       setDirty(false);
+      setBackend(response.backend);
       setMessage(reload ? "Config saved and reload requested" : "Config validated and saved");
       await load();
     } catch (applyError) {
@@ -210,6 +216,12 @@ export function App() {
             {localDirty ? "Save draft before validating or switching entries." : dirty ? "Server draft differs from the live Caddyfile." : "Editor matches the active config snapshot."}
           </span>
         </div>
+        {backend && backendSummary ? (
+          <div className="status-row">
+            <span className="badge">{backendSummary}</span>
+            <span className="status-note">{backend.sourceDescription}</span>
+          </div>
+        ) : null}
         {entries.length === 0 ? (
           <div className="empty-state">No site entries detected.</div>
         ) : (

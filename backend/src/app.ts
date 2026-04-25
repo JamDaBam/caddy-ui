@@ -5,6 +5,7 @@ import express from "express";
 
 import type { EntryInput } from "@caddy-ui/shared";
 
+import { BackendError } from "./backendTypes.js";
 import { CaddyService } from "./caddyService.js";
 
 function validateEntryInput(value: unknown): value is EntryInput {
@@ -25,6 +26,11 @@ export function createApp(service: CaddyService) {
     try {
       response.json(await service.getHealth());
     } catch (error) {
+      if (error instanceof BackendError) {
+        response.status(500).json({ ok: false, error: error.message, errorCode: error.code });
+        return;
+      }
+
       response.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
     }
   });
