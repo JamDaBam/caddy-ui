@@ -60,6 +60,7 @@ describe("CaddyService", () => {
     expect(result.success).toBe(true);
     expect(result.backend.storageMode).toBe("local-file");
     expect(await readFile(caddyfilePath, "utf8")).toContain("respond \"updated\"");
+    expect(reloadTarget.reload).not.toHaveBeenCalled();
   });
 
   it("skips reload when reload mode is disabled", async () => {
@@ -120,5 +121,6 @@ describe("CaddyService", () => {
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe("ADMIN_API_UNREACHABLE");
     expect(await readFile(caddyfilePath, "utf8")).toContain("respond \"updated\"");
+    expect(reloadTarget.reload).toHaveBeenCalledWith("example.com {\n\trespond \"updated\"\n}\n");
   });
 });

@@ -7,7 +7,7 @@ export interface ReloadResult {
 }
 
 export interface ReloadTarget {
-  reload(): Promise<ReloadResult>;
+  reload(config: string): Promise<ReloadResult>;
 }
 
 function isMissingCommandError(error: CommandExecutionError, commandName: string) {
@@ -101,14 +101,18 @@ export class AdminApiReloadTarget implements ReloadTarget {
     this.options = options;
   }
 
-  async reload(): Promise<ReloadResult> {
+  async reload(config: string): Promise<ReloadResult> {
     const controller = new AbortController();
     const timeout = globalThis.setTimeout(() => controller.abort(), this.options.timeoutMs);
 
     try {
       const response = await fetch(this.options.url, {
         method: "POST",
-        headers: buildAdminApiHeaders(this.options),
+        headers: {
+          "Content-Type": "text/caddyfile",
+          ...buildAdminApiHeaders(this.options)
+        },
+        body: config,
         signal: controller.signal
       });
 

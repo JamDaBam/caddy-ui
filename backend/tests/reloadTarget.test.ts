@@ -28,7 +28,17 @@ describe("AdminApiReloadTarget", () => {
       timeoutMs: 1000
     });
 
-    await expect(target.reload()).resolves.toEqual({ output: "reloaded" });
+    await expect(target.reload(":80 {\n\trespond \"ok\"\n}\n")).resolves.toEqual({ output: "reloaded" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://caddy:2019/load",
+      expect.objectContaining({
+        method: "POST",
+        body: ":80 {\n\trespond \"ok\"\n}\n",
+        headers: expect.objectContaining({
+          "Content-Type": "text/caddyfile"
+        })
+      })
+    );
   });
 
   it("maps unreachable host failures", async () => {
@@ -41,7 +51,7 @@ describe("AdminApiReloadTarget", () => {
       timeoutMs: 1000
     });
 
-    await expect(target.reload()).rejects.toEqual(
+    await expect(target.reload(":80 {\n\trespond \"ok\"\n}\n")).rejects.toEqual(
       expect.objectContaining<Partial<BackendError>>({
         code: "ADMIN_API_UNREACHABLE"
       })
@@ -56,7 +66,7 @@ describe("AdminApiReloadTarget", () => {
       timeoutMs: 1000
     });
 
-    await expect(target.reload()).rejects.toEqual(
+    await expect(target.reload(":80 {\n\trespond \"ok\"\n}\n")).rejects.toEqual(
       expect.objectContaining<Partial<BackendError>>({
         code: "ADMIN_API_RESPONSE_ERROR"
       })
@@ -76,7 +86,7 @@ describe("AdminApiReloadTarget", () => {
       timeoutMs: 1
     });
 
-    await expect(target.reload()).rejects.toEqual(
+    await expect(target.reload(":80 {\n\trespond \"ok\"\n}\n")).rejects.toEqual(
       expect.objectContaining<Partial<BackendError>>({
         code: "ADMIN_API_TIMEOUT"
       })

@@ -113,7 +113,7 @@ export class CaddyService {
       let reloadOutput = "";
       if (options.reload && this.modeInfo.reloadEnabled) {
         try {
-          const reload = await this.reloadTarget.reload();
+          const reload = await this.reloadTarget.reload(draft);
           reloadOutput = reload.output;
         } catch (error) {
           const mapped = formatUnexpectedError(error, "Config was saved, but reload failed.");
