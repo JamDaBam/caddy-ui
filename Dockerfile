@@ -10,9 +10,12 @@ FROM deps AS build
 COPY . .
 RUN npm run build
 
+FROM caddy:2.8.4 AS caddy-bin
+
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+COPY --from=caddy-bin /usr/bin/caddy /usr/bin/caddy
 COPY --from=build /app/backend/dist ./backend/dist
 COPY --from=build /app/frontend/dist ./frontend/dist
 COPY --from=build /app/backend/package.json ./backend/package.json

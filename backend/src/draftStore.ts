@@ -1,8 +1,7 @@
-import { readFile } from "node:fs/promises";
-
 import type { CaddyEntry, EntryInput } from "@caddy-ui/shared";
 
 import { parseCaddyfile, rebuildCaddyfile, type CaddySegment } from "./caddyfile.js";
+import type { CaddyfileStore } from "./caddyfileStore.js";
 
 export interface DraftSnapshot {
   entries: CaddyEntry[];
@@ -12,12 +11,12 @@ export interface DraftSnapshot {
 }
 
 export class DraftStore {
-  private sourcePath: string;
+  private store: CaddyfileStore;
   private draftSegments: CaddySegment[] | null = null;
   private dirty = false;
 
-  constructor(sourcePath: string) {
-    this.sourcePath = sourcePath;
+  constructor(store: CaddyfileStore) {
+    this.store = store;
   }
 
   async getSnapshot(): Promise<DraftSnapshot> {
@@ -28,16 +27,16 @@ export class DraftStore {
           .map((segment) => segment.entry),
         segments: this.draftSegments,
         dirty: this.dirty,
-        sourcePath: this.sourcePath
+        sourcePath: this.store.getModeInfo().sourcePath
       };
     }
 
-    const parsed = parseCaddyfile(await readFile(this.sourcePath, "utf8"));
+    const parsed = parseCaddyfile(await this.store.read());
     return {
       entries: parsed.entries,
       segments: parsed.segments,
       dirty: false,
-      sourcePath: this.sourcePath
+      sourcePath: this.store.getModeInfo().sourcePath
     };
   }
 
@@ -46,7 +45,7 @@ export class DraftStore {
       return this.draftSegments;
     }
 
-    const parsed = parseCaddyfile(await readFile(this.sourcePath, "utf8"));
+    const parsed = parseCaddyfile(await this.store.read());
     this.draftSegments = parsed.segments;
     return this.draftSegments;
   }
@@ -132,4 +131,3 @@ export class DraftStore {
     return this.dirty;
   }
 }
-

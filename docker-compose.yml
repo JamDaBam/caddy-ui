@@ -1,12 +1,47 @@
 services:
+  caddyfile-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "if [ ! -f /shared/Caddyfile ]; then cp /seed/Caddyfile /shared/Caddyfile; fi"]
+    volumes:
+      - caddyfile:/shared
+      - ./test/docker/Caddyfile:/seed/Caddyfile:ro
+    restart: "no"
+
+  caddy:
+    image: caddy:2.8.4
+    depends_on:
+      caddyfile-init:
+        condition: service_completed_successfully
+    command: ["caddy", "run", "--config", "/shared/Caddyfile", "--adapter", "caddyfile"]
+    ports:
+      - "8080:80"
+    volumes:
+      - caddyfile:/shared
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
   caddy-ui:
     build: .
+    depends_on:
+      caddyfile-init:
+        condition: service_completed_successfully
+      caddy:
+        condition: service_started
     ports:
       - "3001:3001"
     environment:
       PORT: "3001"
-      CADDYFILE_PATH: /etc/caddy/Caddyfile
-      ENABLE_RELOAD: "false"
+      CADDY_STORAGE_MODE: shared-file
+      CADDYFILE_PATH: /shared/Caddyfile
+      CADDY_RELOAD_MODE: admin-api
+      CADDY_ADMIN_API_URL: http://caddy:2019/load
+      CADDY_VALIDATE_COMMAND: caddy validate --config {config} --adapter caddyfile
     volumes:
-      - ./test/Caddyfile:/etc/caddy/Caddyfile
+      - caddyfile:/shared
     restart: unless-stopped
+
+volumes:
+  caddyfile:
+  caddy_data:
+  caddy_config:

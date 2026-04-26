@@ -1,20 +1,43 @@
+import type { ReloadMode, StorageMode } from "./backendTypes.js";
+
 export interface AppConfig {
   port: number;
+  storageMode: StorageMode;
+  reloadMode: ReloadMode;
   caddyfilePath: string;
   validateCommand: string;
   reloadCommand: string;
-  enableReload: boolean;
+  adminApiUrl: string;
+  adminApiToken?: string;
+  adminApiAuthHeader?: string;
+  adminApiTimeoutMs: number;
+}
+
+function parseStorageMode(value: string | undefined): StorageMode {
+  return value === "shared-file" ? "shared-file" : "local-file";
+}
+
+function parseReloadMode(value: string | undefined, legacyEnableReload: string | undefined): ReloadMode {
+  if (value === "disabled" || value === "command" || value === "admin-api") {
+    return value;
+  }
+
+  return String(legacyEnableReload ?? "false").toLowerCase() === "true" ? "command" : "disabled";
 }
 
 export function getConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     port: Number(env.PORT ?? 3001),
+    storageMode: parseStorageMode(env.CADDY_STORAGE_MODE),
+    reloadMode: parseReloadMode(env.CADDY_RELOAD_MODE, env.ENABLE_RELOAD),
     caddyfilePath: env.CADDYFILE_PATH ?? "/etc/caddy/Caddyfile",
     validateCommand:
       env.CADDY_VALIDATE_COMMAND ??
       "caddy validate --config {config} --adapter caddyfile",
     reloadCommand: env.CADDY_RELOAD_COMMAND ?? "systemctl reload caddy",
-    enableReload: String(env.ENABLE_RELOAD ?? "false").toLowerCase() === "true"
+    adminApiUrl: env.CADDY_ADMIN_API_URL ?? "http://caddy:2019/load",
+    adminApiToken: env.CADDY_ADMIN_API_TOKEN,
+    adminApiAuthHeader: env.CADDY_ADMIN_API_AUTH_HEADER,
+    adminApiTimeoutMs: Number(env.CADDY_ADMIN_API_TIMEOUT_MS ?? 5000)
   };
 }
-

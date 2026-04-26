@@ -1,74 +1,88 @@
-import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
-
 import type { ApplyResponse, EntryInput, EntriesResponse, HealthResponse } from "@caddy-ui/shared";
 
 import type { AppConfig } from "./config.js";
-import { CommandExecutionError, runCommand, summarizeCommandOutput } from "./commandRunner.js";
+import type { BackendModeInfo } from "./backendTypes.js";
+import { BackendError } from "./backendTypes.js";
+import type { CaddyfileStore } from "./caddyfileStore.js";
+import { FileCaddyfileStore } from "./caddyfileStore.js";
+import type { ConfigValidator } from "./configValidator.js";
+import { CommandConfigValidator } from "./configValidator.js";
 import { DraftStore } from "./draftStore.js";
+import type { ReloadTarget } from "./reloadTarget.js";
+import { AdminApiReloadTarget, CommandReloadTarget, DisabledReloadTarget } from "./reloadTarget.js";
 
-function isMissingCommandError(error: CommandExecutionError, commandName: string) {
-  return (
-    error.message.includes("ENOENT") &&
-    (error.message.includes(`spawn ${commandName}`) || error.message.includes(`"${commandName}"`))
-  );
+function formatUnexpectedError(error: unknown, fallback: string): { error: string; errorCode?: ApplyResponse["errorCode"] } {
+  if (error instanceof BackendError) {
+    return {
+      error: error.message,
+      errorCode: error.code
+    };
+  }
+
+  return {
+    error: error instanceof Error ? error.message : fallback
+  };
 }
 
-function formatApplyError(error: unknown, context: "validate" | "reload") {
-  if (error instanceof CommandExecutionError) {
-    if (context === "validate" && isMissingCommandError(error, "caddy")) {
-      return "Validation could not start because the Caddy executable is not available. Install Caddy in the container or set CADDY_VALIDATE_COMMAND to the correct path.";
-    }
-
-    if (context === "reload" && isMissingCommandError(error, "systemctl")) {
-      return "Reload could not start because systemd is not available in this environment. Disable reload or set CADDY_RELOAD_COMMAND to a command that works in this container.";
-    }
-
-    const output = summarizeCommandOutput(error.stdout, error.stderr);
-    if (context === "validate" && output) {
-      return `Validation failed. ${output}`;
-    }
-
-    if (context === "reload" && output) {
-      return `Config was saved, but reload failed. ${output}`;
-    }
-  }
-
-  if (context === "validate") {
-    return error instanceof Error ? error.message : "Validation failed.";
-  }
-
-  return error instanceof Error ? `Config was saved, but reload failed. ${error.message}` : "Config was saved, but reload failed.";
+function buildModeInfo(config: AppConfig, store: CaddyfileStore): BackendModeInfo {
+  return {
+    ...store.getModeInfo(),
+    reloadMode: config.reloadMode,
+    reloadEnabled: config.reloadMode !== "disabled"
+  };
 }
 
 export class CaddyService {
-  private config: AppConfig;
   private draftStore: DraftStore;
+  private store: CaddyfileStore;
+  private validator: ConfigValidator;
+  private reloadTarget: ReloadTarget;
+  private modeInfo: BackendModeInfo;
 
-  constructor(config: AppConfig) {
-    this.config = config;
-    this.draftStore = new DraftStore(config.caddyfilePath);
+  constructor(
+    config: AppConfig,
+    dependencies?: {
+      store?: CaddyfileStore;
+      validator?: ConfigValidator;
+      reloadTarget?: ReloadTarget;
+    }
+  ) {
+    this.store = dependencies?.store ?? new FileCaddyfileStore(config.storageMode, config.caddyfilePath);
+    this.validator = dependencies?.validator ?? new CommandConfigValidator(config.validateCommand);
+    this.reloadTarget =
+      dependencies?.reloadTarget ??
+      (config.reloadMode === "command"
+        ? new CommandReloadTarget(config.reloadCommand)
+        : config.reloadMode === "admin-api"
+          ? new AdminApiReloadTarget({
+              url: config.adminApiUrl,
+              token: config.adminApiToken,
+              authHeader: config.adminApiAuthHeader,
+              timeoutMs: config.adminApiTimeoutMs
+            })
+          : new DisabledReloadTarget());
+    this.modeInfo = buildModeInfo(config, this.store);
+    this.draftStore = new DraftStore(this.store);
+  }
+
+  private toEntriesResponse(snapshot: Awaited<ReturnType<DraftStore["getSnapshot"]>>): EntriesResponse {
+    return {
+      entries: snapshot.entries,
+      dirty: snapshot.dirty,
+      sourcePath: snapshot.sourcePath,
+      warnings: [],
+      backend: this.modeInfo
+    };
   }
 
   async getEntries(): Promise<EntriesResponse> {
     const snapshot = await this.draftStore.getSnapshot();
-    return {
-      entries: snapshot.entries,
-      dirty: snapshot.dirty,
-      sourcePath: snapshot.sourcePath,
-      warnings: []
-    };
+    return this.toEntriesResponse(snapshot);
   }
 
   async createEntry(input: EntryInput): Promise<EntriesResponse> {
     const snapshot = await this.draftStore.create(input);
-    return {
-      entries: snapshot.entries,
-      dirty: snapshot.dirty,
-      sourcePath: snapshot.sourcePath,
-      warnings: []
-    };
+    return this.toEntriesResponse(snapshot);
   }
 
   async updateEntry(id: string, input: EntryInput): Promise<EntriesResponse | null> {
@@ -77,12 +91,7 @@ export class CaddyService {
       return null;
     }
 
-    return {
-      entries: snapshot.entries,
-      dirty: snapshot.dirty,
-      sourcePath: snapshot.sourcePath,
-      warnings: []
-    };
+    return this.toEntriesResponse(snapshot);
   }
 
   async deleteEntry(id: string): Promise<EntriesResponse | null> {
@@ -91,38 +100,30 @@ export class CaddyService {
       return null;
     }
 
-    return {
-      entries: snapshot.entries,
-      dirty: snapshot.dirty,
-      sourcePath: snapshot.sourcePath,
-      warnings: []
-    };
+    return this.toEntriesResponse(snapshot);
   }
 
   async apply(options: { reload?: boolean }): Promise<ApplyResponse> {
-    const tempDir = await mkdtemp(join(tmpdir(), "caddy-ui-"));
-    const tempConfigPath = join(tempDir, basename(this.config.caddyfilePath));
     const draft = await this.draftStore.renderDraft();
 
     try {
-      await writeFile(tempConfigPath, draft, "utf8");
-      const validation = await runCommand(this.config.validateCommand, tempConfigPath);
-
-      const liveTempPath = join(dirname(this.config.caddyfilePath), `.${basename(this.config.caddyfilePath)}.tmp`);
-      await writeFile(liveTempPath, draft, "utf8");
-      await rename(liveTempPath, this.config.caddyfilePath);
+      const validation = await this.validator.validate(draft, this.modeInfo.sourcePath);
+      await this.store.write(draft);
 
       let reloadOutput = "";
-      if (options.reload && this.config.enableReload) {
+      if (options.reload && this.modeInfo.reloadEnabled) {
         try {
-          const reload = await runCommand(this.config.reloadCommand);
-          reloadOutput = summarizeCommandOutput(reload.stdout, reload.stderr);
+          const reload = await this.reloadTarget.reload(draft);
+          reloadOutput = reload.output;
         } catch (error) {
+          const mapped = formatUnexpectedError(error, "Config was saved, but reload failed.");
           return {
             success: false,
             dirty: false,
-            error: formatApplyError(error, "reload"),
-            validationOutput: summarizeCommandOutput(validation.stdout, validation.stderr)
+            error: mapped.error,
+            errorCode: mapped.errorCode,
+            validationOutput: validation.output,
+            backend: this.modeInfo
           };
         }
       }
@@ -131,33 +132,30 @@ export class CaddyService {
       return {
         success: true,
         dirty: false,
-        validationOutput: summarizeCommandOutput(validation.stdout, validation.stderr),
-        reloadOutput
+        validationOutput: validation.output,
+        reloadOutput,
+        backend: this.modeInfo
       };
     } catch (error) {
-      const output =
-        error instanceof CommandExecutionError
-          ? summarizeCommandOutput(error.stdout, error.stderr)
-          : undefined;
-      const message = formatApplyError(error, "validate");
+      const mapped = formatUnexpectedError(error, "Validation failed.");
       return {
         success: false,
         dirty: this.draftStore.isDirty(),
-        error: message,
-        validationOutput: output
+        error: mapped.error,
+        errorCode: mapped.errorCode,
+        backend: this.modeInfo
       };
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
     }
   }
 
   async getHealth(): Promise<HealthResponse> {
-    await readFile(this.config.caddyfilePath, "utf8");
+    await this.store.read();
     return {
       ok: true,
       dirty: this.draftStore.isDirty(),
-      reloadEnabled: this.config.enableReload,
-      sourcePath: this.config.caddyfilePath
+      reloadEnabled: this.modeInfo.reloadEnabled,
+      sourcePath: this.modeInfo.sourcePath,
+      backend: this.modeInfo
     };
   }
 }

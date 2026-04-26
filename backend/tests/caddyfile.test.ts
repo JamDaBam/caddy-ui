@@ -25,8 +25,23 @@ describe("parseCaddyfile", () => {
     const input = "example.com {\n\thandle /api/* {\n\t\treverse_proxy localhost:9000\n\t}\n}\n";
     const parsed = parseCaddyfile(input);
 
-    expect(parsed.entries[0].raw).toContain("handle /api/*");
+    expect(parsed.entries[0].raw).toBe("handle /api/* {\n\treverse_proxy localhost:9000\n}");
     expect(rebuildCaddyfile(parsed.segments)).toContain("reverse_proxy localhost:9000");
   });
-});
 
+  it("removes top-level block indentation from editable raw content", () => {
+    const input = ":80 {\n\trespond \"hello\"\n\t# keep comment\n}\n";
+    const parsed = parseCaddyfile(input);
+
+    expect(parsed.entries[0].raw).toBe("respond \"hello\"\n# keep comment");
+  });
+
+  it("keeps repeated parse and rebuild cycles stable", () => {
+    const input = ":80 {\n\trespond \"hello\"\n\t# keep comment\n}\n";
+
+    const first = rebuildCaddyfile(parseCaddyfile(input).segments);
+    const second = rebuildCaddyfile(parseCaddyfile(first).segments);
+
+    expect(second).toBe(first);
+  });
+});
