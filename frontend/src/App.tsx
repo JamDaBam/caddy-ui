@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { BackendModeInfo, CaddyEntry } from "@caddy-ui/shared";
 
 import { applyChanges, createEntry, deleteEntry, fetchEntries, fetchHealth, updateEntry } from "./api";
+import { buildStructuredRaw, emptyStructuredEntryFields, parseStructuredEntry, type StructuredEntryFields } from "./structuredEntry";
 
 interface EditorState {
   id?: string;
@@ -15,10 +16,14 @@ const emptyEditor: EditorState = {
   raw: ""
 };
 
+type EditorTab = "guided" | "raw";
+
 export function App() {
   const [entries, setEntries] = useState<CaddyEntry[]>([]);
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
+  const [activeTab, setActiveTab] = useState<EditorTab>("guided");
   const [dirty, setDirty] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reloadEnabled, setReloadEnabled] = useState(false);
   const [backend, setBackend] = useState<BackendModeInfo | null>(null);
@@ -29,11 +34,16 @@ export function App() {
     ? activeEntry.label !== editor.label || activeEntry.raw !== editor.raw
     : editor.label.trim().length > 0 || editor.raw.trim().length > 0;
   const canSaveDraft = Boolean(editor.label.trim()) && localDirty;
-  const canValidateAndSave = dirty && !localDirty;
-  const canSaveAndReload = reloadEnabled && !localDirty;
+  const canValidateAndSave = dirty && !localDirty && !applying;
+  const canSaveAndReload = reloadEnabled && !localDirty && !applying;
   const statusLabel = localDirty ? "Local edits not saved" : dirty ? "Draft staged" : "Live config";
   const statusClassName = localDirty ? "badge badge-alert" : dirty ? "badge badge-warn" : "badge";
   const backendSummary = backend ? `${backend.storageMode} storage • ${backend.reloadMode} reload` : null;
+  const structuredParse = parseStructuredEntry(editor.label, editor.raw);
+  const structuredFields = structuredParse.supported ? structuredParse.fields ?? emptyStructuredEntryFields : null;
+  const structuredBuild = structuredFields ? buildStructuredRaw(structuredFields) : null;
+  const guidedFieldErrors = structuredBuild?.errors ?? [];
+  const canSaveFromGuided = structuredParse.supported && structuredBuild?.valid;
 
   function setEditorFromEntry(entry: CaddyEntry | null) {
     setEditor(
@@ -120,6 +130,11 @@ export function App() {
   }
 
   async function saveEntry() {
+    if (activeTab === "guided" && !canSaveFromGuided) {
+      setError("Complete the required guided fields or switch to Raw directives.");
+      return;
+    }
+
     if (!editor.label.trim()) {
       setError("Entry label is required");
       return;
@@ -168,8 +183,13 @@ export function App() {
   }
 
   async function apply(reload: boolean) {
+    if (applying) {
+      return;
+    }
+
     setError(null);
     setMessage(null);
+    setApplying(true);
     try {
       const response = await applyChanges({ reload });
       if (!response.success) {
@@ -181,11 +201,27 @@ export function App() {
       await load(editor.id ?? null);
     } catch (applyError) {
       setError(applyError instanceof Error ? applyError.message : "Apply failed");
+    } finally {
+      setApplying(false);
     }
   }
 
   if (loading) {
     return <main className="shell"><section className="panel">Loading...</section></main>;
+  }
+
+  function updateStructuredFields(patch: Partial<StructuredEntryFields>) {
+    const base = structuredFields ?? emptyStructuredEntryFields;
+    const nextFields: StructuredEntryFields = {
+      ...base,
+      ...patch
+    };
+    const nextBuild = buildStructuredRaw(nextFields);
+    setEditor((current) => ({
+      ...current,
+      label: nextBuild.label,
+      raw: nextBuild.raw
+    }));
   }
 
   return (
@@ -245,31 +281,148 @@ export function App() {
         <div className="panel-header">
           <div>
             <h2>{editor.id ? "Edit entry" : "Create entry"}</h2>
-            <p>Raw block content stays editable, including comments and nested blocks.</p>
+            <p>Use the guided editor for the supported reverse-proxy shape, or fall back to raw directives for anything else.</p>
           </div>
         </div>
 
         {error ? <div className="banner banner-error">{error}</div> : null}
         {message ? <div className="banner banner-info">{message}</div> : null}
 
-        <label>
-          Site label or matcher
-          <input
-            value={editor.label}
-            onChange={(event) => setEditor((current) => ({ ...current, label: event.target.value }))}
-            placeholder="example.com"
-          />
-        </label>
+        <div className="tabs" role="tablist" aria-label="Entry editor mode">
+          <button
+            type="button"
+            id="guided-editor-tab"
+            role="tab"
+            aria-selected={activeTab === "guided"}
+            className={activeTab === "guided" ? "tab-button active" : "tab-button"}
+            onClick={() => setActiveTab("guided")}
+          >
+            Guided editor
+          </button>
+          <button
+            type="button"
+            id="raw-directives-tab"
+            role="tab"
+            aria-selected={activeTab === "raw"}
+            className={activeTab === "raw" ? "tab-button active" : "tab-button"}
+            onClick={() => setActiveTab("raw")}
+          >
+            Raw directives
+          </button>
+        </div>
 
-        <label>
-          Raw directives
-          <textarea
-            rows={16}
-            value={editor.raw}
-            onChange={(event) => setEditor((current) => ({ ...current, raw: event.target.value }))}
-            placeholder={"reverse_proxy localhost:8080"}
-          />
-        </label>
+        {activeTab === "guided" ? (
+          <div role="tabpanel" aria-labelledby="guided-editor-tab" className="guided-editor">
+            {structuredFields ? (
+              <>
+                <label>
+                  Domain names / hostnames
+                  <input
+                    value={structuredFields.hostnames.join(", ")}
+                    onChange={(event) =>
+                      updateStructuredFields({
+                        hostnames: event.target.value
+                          .split(",")
+                          .map((hostname) => hostname.trim())
+                          .filter((hostname) => hostname.length > 0)
+                      })
+                    }
+                    placeholder="example.com, www.example.com"
+                  />
+                  {guidedFieldErrors.includes("At least one hostname is required.") ? (
+                    <span className="field-error">Enter at least one hostname.</span>
+                  ) : null}
+                </label>
+
+                <label>
+                  ACME directory URL
+                  <input
+                    value={structuredFields.acmeDirectoryUrl}
+                    onChange={(event) => updateStructuredFields({ acmeDirectoryUrl: event.target.value })}
+                    placeholder="https://acme-v02.api.letsencrypt.org/directory"
+                  />
+                  {guidedFieldErrors.includes("ACME directory URL is required.") ? (
+                    <span className="field-error">Enter the ACME directory URL.</span>
+                  ) : null}
+                </label>
+
+                <label>
+                  TLS email
+                  <input
+                    value={structuredFields.tlsEmail}
+                    onChange={(event) => updateStructuredFields({ tlsEmail: event.target.value })}
+                    placeholder="admin@example.com"
+                  />
+                </label>
+
+                <label>
+                  Trusted root CA path
+                  <input
+                    value={structuredFields.trustedRootCaPath}
+                    onChange={(event) => updateStructuredFields({ trustedRootCaPath: event.target.value })}
+                    placeholder="/etc/ssl/custom-root.pem"
+                  />
+                </label>
+
+                <label>
+                  Reverse proxy target
+                  <input
+                    value={structuredFields.reverseProxyTarget}
+                    onChange={(event) =>
+                      updateStructuredFields({
+                        reverseProxyTarget: event.target.value,
+                        tlsInsecureSkipVerify: event.target.value ? structuredFields.tlsInsecureSkipVerify : false
+                      })
+                    }
+                    placeholder="https://localhost:8443"
+                  />
+                  {guidedFieldErrors.includes("Reverse proxy target is required.") ? (
+                    <span className="field-error">Enter the upstream target.</span>
+                  ) : null}
+                </label>
+
+                <label className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={structuredFields.tlsInsecureSkipVerify}
+                    disabled={!structuredFields.reverseProxyTarget.trim()}
+                    onChange={(event) => updateStructuredFields({ tlsInsecureSkipVerify: event.target.checked })}
+                  />
+                  <span>Skip upstream TLS verification</span>
+                </label>
+              </>
+            ) : (
+              <div className="banner banner-warn">
+                <strong>Guided editing unavailable.</strong>
+                <p>
+                  {structuredParse.errors[0] ?? "This entry does not match the supported guided pattern."} Use Raw directives to edit
+                  this entry directly.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div role="tabpanel" aria-labelledby="raw-directives-tab">
+            <label>
+              Site label or matcher
+              <input
+                value={editor.label}
+                onChange={(event) => setEditor((current) => ({ ...current, label: event.target.value }))}
+                placeholder="example.com"
+              />
+            </label>
+
+            <label>
+              Raw directives
+              <textarea
+                rows={16}
+                value={editor.raw}
+                onChange={(event) => setEditor((current) => ({ ...current, raw: event.target.value }))}
+                placeholder={"reverse_proxy localhost:8080"}
+              />
+            </label>
+          </div>
+        )}
 
         <div className="actions">
           <button onClick={() => void saveEntry()} disabled={!canSaveDraft}>

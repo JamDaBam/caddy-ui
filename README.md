@@ -31,6 +31,42 @@ npm run dev -w frontend
 
 The frontend expects the backend on `http://localhost:3001` by default.
 
+## Guided entry editor
+
+The frontend editor now has two entry-editing modes:
+
+- `Guided editor`: a form for the supported reverse-proxy entry shape
+- `Raw directives`: direct editing for any Caddyfile block content
+
+The guided tab currently supports entries shaped like this:
+
+```caddyfile
+tls {
+  issuer acme {
+    dir https://acme-v02.api.letsencrypt.org/directory
+    email admin@example.com
+    trusted_roots /etc/ssl/custom-root.pem
+  }
+}
+
+reverse_proxy https://origin.example.org:8443 {
+  transport http {
+    tls_insecure_skip_verify
+  }
+}
+```
+
+Supported guided fields:
+
+- one or more comma-separated hostnames in the site label
+- ACME directory URL
+- optional TLS email
+- optional trusted root CA path
+- reverse proxy target
+- optional upstream `tls_insecure_skip_verify`
+
+If an entry includes other directives or a different nested structure, the guided tab shows an unsupported message and you can continue editing it in `Raw directives`.
+
 ## Backend configuration
 
 Core variables:

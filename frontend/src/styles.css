@@ -111,6 +111,42 @@ textarea {
   margin-top: 16px;
 }
 
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.tab-button {
+  background: transparent;
+  color: #17324d;
+  border: 1px solid rgba(23, 32, 42, 0.14);
+}
+
+.tab-button.active {
+  background: #17324d;
+  color: #fdfbf7;
+}
+
+.guided-editor {
+  display: grid;
+}
+
+.field-error {
+  color: #991b1b;
+  font-size: 0.9rem;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-field input {
+  width: auto;
+}
+
 input,
 textarea {
   width: 100%;
@@ -177,6 +213,15 @@ button:disabled {
 .banner-info {
   background: #dbeafe;
   color: #1d4ed8;
+}
+
+.banner-warn {
+  background: #fff3cd;
+  color: #6b4f00;
+}
+
+.banner-warn p {
+  margin: 8px 0 0;
 }
 
 .badge {
