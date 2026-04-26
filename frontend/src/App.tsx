@@ -29,11 +29,25 @@ export function App() {
     ? activeEntry.label !== editor.label || activeEntry.raw !== editor.raw
     : editor.label.trim().length > 0 || editor.raw.trim().length > 0;
   const canSaveDraft = Boolean(editor.label.trim()) && localDirty;
+  const canValidateAndSave = dirty && !localDirty;
+  const canSaveAndReload = reloadEnabled && !localDirty;
   const statusLabel = localDirty ? "Local edits not saved" : dirty ? "Draft staged" : "Live config";
   const statusClassName = localDirty ? "badge badge-alert" : dirty ? "badge badge-warn" : "badge";
   const backendSummary = backend ? `${backend.storageMode} storage • ${backend.reloadMode} reload` : null;
 
-  async function load() {
+  function setEditorFromEntry(entry: CaddyEntry | null) {
+    setEditor(
+      entry
+        ? {
+            id: entry.id,
+            label: entry.label,
+            raw: entry.raw
+          }
+        : emptyEditor
+    );
+  }
+
+  async function load(syncEditorId?: string | null) {
     setLoading(true);
     setError(null);
     try {
@@ -42,12 +56,13 @@ export function App() {
       setDirty(entriesResponse.dirty);
       setReloadEnabled(healthResponse.reloadEnabled);
       setBackend(healthResponse.backend ?? entriesResponse.backend);
-      if (entriesResponse.entries.length > 0 && !editor.id) {
-        setEditor({
-          id: entriesResponse.entries[0].id,
-          label: entriesResponse.entries[0].label,
-          raw: entriesResponse.entries[0].raw
-        });
+      if (syncEditorId !== undefined) {
+        const syncedEntry = syncEditorId
+          ? entriesResponse.entries.find((entry) => entry.id === syncEditorId) ?? entriesResponse.entries[0] ?? null
+          : entriesResponse.entries[0] ?? null;
+        setEditorFromEntry(syncedEntry);
+      } else if (entriesResponse.entries.length > 0 && !editor.id) {
+        setEditorFromEntry(entriesResponse.entries[0]);
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load");
@@ -99,11 +114,7 @@ export function App() {
       return;
     }
 
-    setEditor({
-      id: entry.id,
-      label: entry.label,
-      raw: entry.raw
-    });
+    setEditorFromEntry(entry);
     setMessage(null);
     setError(null);
   }
@@ -125,9 +136,7 @@ export function App() {
       setDirty(response.dirty);
       setBackend(response.backend);
       const latest = response.entries.find((entry) => entry.label === editor.label) ?? response.entries.at(-1);
-      if (latest) {
-        selectEntry(latest);
-      }
+      setEditorFromEntry(latest ?? null);
       setMessage("Draft updated");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save draft");
@@ -151,16 +160,7 @@ export function App() {
       setEntries(response.entries);
       setDirty(response.dirty);
       setBackend(response.backend);
-      const nextEntry = response.entries[0];
-      setEditor(
-        nextEntry
-          ? {
-              id: nextEntry.id,
-              label: nextEntry.label,
-              raw: nextEntry.raw
-            }
-          : emptyEditor
-      );
+      setEditorFromEntry(response.entries[0] ?? null);
       setMessage("Entry removed from draft");
     } catch (removeError) {
       setError(removeError instanceof Error ? removeError.message : "Failed to delete entry");
@@ -178,7 +178,7 @@ export function App() {
       setDirty(false);
       setBackend(response.backend);
       setMessage(reload ? "Config saved and reload requested" : "Config validated and saved");
-      await load();
+      await load(editor.id ?? null);
     } catch (applyError) {
       setError(applyError instanceof Error ? applyError.message : "Apply failed");
     }
@@ -278,10 +278,10 @@ export function App() {
           <button className="ghost" onClick={() => void removeEntry()} disabled={!editor.id && !localDirty}>
             Delete entry
           </button>
-          <button className="secondary" onClick={() => void apply(false)} disabled={!dirty}>
+          <button className="secondary" onClick={() => void apply(false)} disabled={!canValidateAndSave}>
             Validate and save
           </button>
-          <button className="secondary" onClick={() => void apply(true)} disabled={!dirty || !reloadEnabled}>
+          <button className="secondary" onClick={() => void apply(true)} disabled={!canSaveAndReload}>
             Save and reload
           </button>
         </div>

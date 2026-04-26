@@ -71,6 +71,28 @@ function normalizeBody(body: string): string {
   return trimmed.length > 0 ? `${trimmed}\n` : "";
 }
 
+function stripCommonIndent(body: string): string {
+  const normalized = normalizeBody(body).replace(/\n$/, "");
+  if (!normalized) {
+    return "";
+  }
+
+  const lines = normalized.split("\n");
+  const indentLengths = lines
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      const match = line.match(/^[\t ]*/);
+      return match?.[0].length ?? 0;
+    });
+
+  const commonIndent = indentLengths.length > 0 ? Math.min(...indentLengths) : 0;
+  if (commonIndent === 0) {
+    return normalized;
+  }
+
+  return lines.map((line) => line.slice(commonIndent)).join("\n");
+}
+
 export function renderSiteBlock(header: string, body: string): string {
   const normalizedHeader = header.trim();
   const normalizedBody = normalizeBody(body);
@@ -101,7 +123,7 @@ function buildEntry(id: string, order: number, header: string, body: string): Ca
     id,
     label: parsedHeader.label,
     matcher: parsedHeader.matcher,
-    raw: normalizeBody(body).replace(/\n$/, ""),
+    raw: stripCommonIndent(body),
     order,
     isValidParse: true,
     warnings: []
@@ -260,4 +282,3 @@ export function rebuildCaddyfile(segments: CaddySegment[]): string {
 
   return rendered.join("").replace(/\s+$/, "\n");
 }
-
