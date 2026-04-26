@@ -1,5 +1,6 @@
 import type { ReloadMode, StorageMode } from "./backendTypes.js";
 
+/** Normalized process configuration for storage, validation, and reload providers. */
 export interface AppConfig {
   port: number;
   storageMode: StorageMode;
@@ -13,10 +14,12 @@ export interface AppConfig {
   adminApiTimeoutMs: number;
 }
 
+/** Defaults to the original local-file behavior so existing single-host deployments keep working. */
 function parseStorageMode(value: string | undefined): StorageMode {
   return value === "shared-file" ? "shared-file" : "local-file";
 }
 
+/** Preserves legacy ENABLE_RELOAD support while preferring the explicit multi-mode reload setting. */
 function parseReloadMode(value: string | undefined, legacyEnableReload: string | undefined): ReloadMode {
   if (value === "disabled" || value === "command" || value === "admin-api") {
     return value;
@@ -25,6 +28,7 @@ function parseReloadMode(value: string | undefined, legacyEnableReload: string |
   return String(legacyEnableReload ?? "false").toLowerCase() === "true" ? "command" : "disabled";
 }
 
+/** Reads env once and fills deployment-safe defaults so the backend can boot with minimal configuration. */
 export function getConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     port: Number(env.PORT ?? 3001),

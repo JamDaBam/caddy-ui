@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 import type { BackendModeInfo, StorageMode } from "./backendTypes.js";
 import { BackendError } from "./backendTypes.js";
 
+/** Persistence abstraction so the rest of the backend does not care where the live Caddyfile lives. */
 export interface CaddyfileStore {
   read(): Promise<string>;
   write(content: string): Promise<void>;
@@ -11,6 +12,7 @@ export interface CaddyfileStore {
   getModeInfo(): BackendModeInfo;
 }
 
+/** Maps low-level filesystem read failures into stable API error codes. */
 function mapReadError(error: unknown, sourcePath: string): BackendError {
   if (typeof error === "object" && error && "code" in error) {
     const code = String(error.code);
@@ -32,6 +34,7 @@ function mapReadError(error: unknown, sourcePath: string): BackendError {
   );
 }
 
+/** Maps write failures separately so the UI can distinguish read-only setups from other persistence issues. */
 function mapWriteError(error: unknown, sourcePath: string): BackendError {
   if (typeof error === "object" && error && "code" in error) {
     const code = String(error.code);
@@ -53,6 +56,7 @@ function mapWriteError(error: unknown, sourcePath: string): BackendError {
   );
 }
 
+/** Filesystem-backed store used for both host-local and shared-volume deployments. */
 export class FileCaddyfileStore implements CaddyfileStore {
   private mode: StorageMode;
   private sourcePath: string;
@@ -70,6 +74,7 @@ export class FileCaddyfileStore implements CaddyfileStore {
     }
   }
 
+  /** Writes via a sibling temp file plus rename so partial writes do not replace the live file. */
   async write(content: string): Promise<void> {
     const liveTempPath = join(dirname(this.sourcePath), `.${basename(this.sourcePath)}.tmp`);
 

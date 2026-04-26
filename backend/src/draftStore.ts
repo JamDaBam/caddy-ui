@@ -3,6 +3,7 @@ import type { CaddyEntry, EntryInput } from "@caddy-ui/shared";
 import { parseCaddyfile, rebuildCaddyfile, type CaddySegment } from "./caddyfile.js";
 import type { CaddyfileStore } from "./caddyfileStore.js";
 
+/** In-memory draft view returned to the API after reads and staged mutations. */
 export interface DraftSnapshot {
   entries: CaddyEntry[];
   segments: CaddySegment[];
@@ -10,6 +11,7 @@ export interface DraftSnapshot {
   sourcePath: string;
 }
 
+/** Keeps staged edits in memory while preserving untouched raw segments from the source Caddyfile. */
 export class DraftStore {
   private store: CaddyfileStore;
   private draftSegments: CaddySegment[] | null = null;
@@ -40,6 +42,7 @@ export class DraftStore {
     };
   }
 
+  /** Lazily snapshots the live file once edits begin so multiple mutations share the same raw segment base. */
   private async ensureDraftSegments(): Promise<CaddySegment[]> {
     if (this.draftSegments) {
       return this.draftSegments;
@@ -50,6 +53,7 @@ export class DraftStore {
     return this.draftSegments;
   }
 
+  /** Reassigns ids and order after mutations so UI identifiers stay contiguous and deterministic. */
   private syncEntries(segments: CaddySegment[]): void {
     let order = 0;
     for (const segment of segments) {
@@ -117,6 +121,7 @@ export class DraftStore {
     return this.getSnapshot();
   }
 
+  /** Renders the entire staged file, combining updated site segments with untouched raw content. */
   async renderDraft(): Promise<string> {
     const snapshot = await this.getSnapshot();
     return rebuildCaddyfile(snapshot.segments);

@@ -2,10 +2,12 @@ import type { BackendErrorCode } from "./backendTypes.js";
 import { BackendError } from "./backendTypes.js";
 import { CommandExecutionError, runCommand, summarizeCommandOutput } from "./commandRunner.js";
 
+/** Reload output is surfaced verbatim so operators can inspect command or API responses. */
 export interface ReloadResult {
   output: string;
 }
 
+/** Reload abstraction allows apply to support local commands and remote Admin API calls interchangeably. */
 export interface ReloadTarget {
   reload(config: string): Promise<ReloadResult>;
 }
@@ -17,12 +19,14 @@ function isMissingCommandError(error: CommandExecutionError, commandName: string
   );
 }
 
+/** No-op target used when persistence should not trigger any live Caddy action. */
 export class DisabledReloadTarget implements ReloadTarget {
   async reload(): Promise<ReloadResult> {
     return { output: "" };
   }
 }
 
+/** Runs a local command after a successful write, matching traditional same-host deployments. */
 export class CommandReloadTarget implements ReloadTarget {
   private command: string;
 
@@ -62,6 +66,7 @@ export interface AdminApiReloadOptions {
   timeoutMs: number;
 }
 
+/** Uses bearer auth by default, or a caller-specified header when fronting a custom proxy/auth layer. */
 function buildAdminApiHeaders(options: AdminApiReloadOptions): HeadersInit {
   if (!options.token) {
     return {};
@@ -72,6 +77,7 @@ function buildAdminApiHeaders(options: AdminApiReloadOptions): HeadersInit {
   };
 }
 
+/** Normalizes fetch-specific failures into the same backend error vocabulary used elsewhere. */
 function mapAdminApiError(error: unknown): BackendError {
   if (error instanceof BackendError) {
     return error;
@@ -94,6 +100,7 @@ function mapAdminApiError(error: unknown): BackendError {
   );
 }
 
+/** Pushes the saved Caddyfile text to `/load`, which is the Admin API entry point for caddyfile reloads. */
 export class AdminApiReloadTarget implements ReloadTarget {
   private options: AdminApiReloadOptions;
 
@@ -136,6 +143,7 @@ export class AdminApiReloadTarget implements ReloadTarget {
   }
 }
 
+/** Helper for callers that need to distinguish persistence success from post-save reload failure. */
 export function isReloadFailureCode(code: BackendErrorCode): boolean {
   return (
     code === "RELOAD_FAILED" ||

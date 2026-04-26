@@ -11,6 +11,7 @@ import { DraftStore } from "./draftStore.js";
 import type { ReloadTarget } from "./reloadTarget.js";
 import { AdminApiReloadTarget, CommandReloadTarget, DisabledReloadTarget } from "./reloadTarget.js";
 
+/** Converts internal errors into the smaller apply payload shape the API returns to the UI. */
 function formatUnexpectedError(error: unknown, fallback: string): { error: string; errorCode?: ApplyResponse["errorCode"] } {
   if (error instanceof BackendError) {
     return {
@@ -24,6 +25,7 @@ function formatUnexpectedError(error: unknown, fallback: string): { error: strin
   };
 }
 
+/** Builds the backend mode description once so every response advertises the active provider stack. */
 function buildModeInfo(config: AppConfig, store: CaddyfileStore): BackendModeInfo {
   return {
     ...store.getModeInfo(),
@@ -32,6 +34,10 @@ function buildModeInfo(config: AppConfig, store: CaddyfileStore): BackendModeInf
   };
 }
 
+/**
+ * Backend orchestration layer for draft editing, validation, persistence, and optional reload.
+ * Store, validator, and reload target stay swappable so local-host and remote-provider deployments share the same API.
+ */
 export class CaddyService {
   private draftStore: DraftStore;
   private store: CaddyfileStore;
@@ -65,6 +71,7 @@ export class CaddyService {
     this.draftStore = new DraftStore(this.store);
   }
 
+  /** Normalizes draft snapshots into the API response shape returned by entry endpoints. */
   private toEntriesResponse(snapshot: Awaited<ReturnType<DraftStore["getSnapshot"]>>): EntriesResponse {
     return {
       entries: snapshot.entries,
@@ -103,6 +110,7 @@ export class CaddyService {
     return this.toEntriesResponse(snapshot);
   }
 
+  /** Validates the staged draft before replacing the live file, then optionally triggers reload. */
   async apply(options: { reload?: boolean }): Promise<ApplyResponse> {
     const draft = await this.draftStore.renderDraft();
 

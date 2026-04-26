@@ -9,6 +9,8 @@ Web UI for editing a Caddyfile with staged drafts, validation, and optional relo
 - `shared/`: Shared API and domain types
 - `docs/architecture/remote-caddy-management.md`: note on the local-only assumptions removed in this branch
 
+Backend architecture note: `CaddyService` coordinates the API workflow, `DraftStore` owns in-memory staged edits, and `CaddyfileStore` owns persistence. Validation and reload are separate provider interfaces so the same API can support both local-host and remote/shared-file deployments.
+
 ## Local development
 
 1. Install dependencies:
@@ -125,6 +127,7 @@ This is the first remote-capable mode implemented in this branch.
 - The UI still edits the Caddyfile, not JSON pushed directly into the Admin API.
 - Validation still uses `caddy validate` against a temporary candidate file local to the backend process.
 - Admin API reload happens only after a successful validated write.
+- In remote/shared-file mode, any `trusted_roots` path must exist in the Caddy runtime environment itself. Backend validation may succeed with a placeholder certificate for missing local files, but Caddy will still reject reloads or startup if the real path is absent.
 - Draft state is still in backend memory; it is not shared across replicas or persisted.
 
 ## Deployment

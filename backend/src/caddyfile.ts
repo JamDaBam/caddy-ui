@@ -1,5 +1,6 @@
 import type { CaddyEntry, EntryWarning } from "@caddy-ui/shared";
 
+/** Parsed top-level site block that can round-trip through the structured editor. */
 export interface SiteSegment {
   type: "site";
   id: string;
@@ -8,13 +9,16 @@ export interface SiteSegment {
   entry: CaddyEntry;
 }
 
+/** Preserved non-site content such as comments, globals, snippets, or unsupported structures. */
 export interface RawSegment {
   type: "raw";
   raw: string;
 }
 
+/** Mixed segment model lets editable site blocks coexist with untouched raw source regions. */
 export type CaddySegment = SiteSegment | RawSegment;
 
+/** Parse result keeps both editable entries and the full segment stream needed for loss-minimized rebuilds. */
 export interface ParsedCaddyfile {
   segments: CaddySegment[];
   entries: CaddyEntry[];
@@ -93,6 +97,7 @@ function stripCommonIndent(body: string): string {
   return lines.map((line) => line.slice(commonIndent)).join("\n");
 }
 
+/** Re-renders a parsed site block with consistent indentation while leaving raw segments untouched. */
 export function renderSiteBlock(header: string, body: string): string {
   const normalizedHeader = header.trim();
   const normalizedBody = normalizeBody(body);
@@ -109,6 +114,7 @@ export function renderSiteBlock(header: string, body: string): string {
   return `${normalizedHeader} {\n${indentedBody}\n}\n`;
 }
 
+/** Current guided parsing treats the full site address line as both the label and matcher key. */
 function parseHeaderLine(header: string): { label: string; matcher: string } {
   const trimmed = header.trim();
   return {
@@ -117,6 +123,7 @@ function parseHeaderLine(header: string): { label: string; matcher: string } {
   };
 }
 
+/** Builds the editable entry snapshot stored alongside the original segment ordering. */
 function buildEntry(id: string, order: number, header: string, body: string): CaddyEntry {
   const parsedHeader = parseHeaderLine(header);
   return {
@@ -130,6 +137,10 @@ function buildEntry(id: string, order: number, header: string, body: string): Ca
   };
 }
 
+/**
+ * Parses only top-level site blocks into editable entries.
+ * Everything else stays in raw segments so rebuilds preserve comments and unsupported constructs.
+ */
 export function parseCaddyfile(source: string): ParsedCaddyfile {
   const segments: CaddySegment[] = [];
   const warnings: EntryWarning[] = [];
@@ -271,6 +282,7 @@ export function parseCaddyfile(source: string): ParsedCaddyfile {
   };
 }
 
+/** Reassembles the full Caddyfile by splicing updated site blocks back into the preserved segment stream. */
 export function rebuildCaddyfile(segments: CaddySegment[]): string {
   const rendered = segments.map((segment) => {
     if (segment.type === "raw") {

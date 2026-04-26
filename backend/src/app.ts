@@ -8,6 +8,7 @@ import type { EntryInput } from "@caddy-ui/shared";
 import { BackendError } from "./backendTypes.js";
 import { CaddyService } from "./caddyService.js";
 
+/** API accepts only the label and raw block body; matcher is derived or passed through separately. */
 function validateEntryInput(value: unknown): value is EntryInput {
   if (!value || typeof value !== "object") {
     return false;
@@ -88,6 +89,7 @@ export function createApp(service: CaddyService) {
   });
 
   app.post("/api/apply", async (request, response) => {
+    // Service-level validation and reload failures are returned as structured 400s so the UI can show operator-facing detail.
     const reload = Boolean(request.body?.reload);
     try {
       const result = await service.apply({ reload });
@@ -107,6 +109,7 @@ export function createApp(service: CaddyService) {
   return app;
 }
 
+/** Supports serving the built SPA from either workspace root or the backend package directory. */
 function resolveFrontendDist() {
   const candidates = [
     path.resolve(process.cwd(), "frontend/dist"),

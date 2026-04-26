@@ -5,14 +5,20 @@ import { basename, join } from "node:path";
 import { BackendError } from "./backendTypes.js";
 import { CommandExecutionError, runCommand, summarizeCommandOutput } from "./commandRunner.js";
 
+/** Validation output is passed through so the UI can show Caddy's explanation directly. */
 export interface ValidationResult {
   output: string;
 }
 
+/** Validator abstraction keeps apply orchestration independent from how config checks are performed. */
 export interface ConfigValidator {
   validate(candidate: string, sourcePath: string): Promise<ValidationResult>;
 }
 
+/**
+ * Some deployments reference trusted root files that only exist on the live host.
+ * A short-lived placeholder keeps `caddy validate` focused on syntax and structure in remote setups.
+ */
 const dummyTrustedRootCertificate = `-----BEGIN CERTIFICATE-----
 MIIDCzCCAfOgAwIBAgIUWCLIxcJKbBzuwUK2/tDqtAnE9Y0wDQYJKoZIhvcNAQEL
 BQAwFTETMBEGA1UEAwwKZHVtbXktcm9vdDAeFw0yNjA0MjYwOTQyMDVaFw0yNjA0
@@ -50,6 +56,7 @@ async function pathExists(path: string) {
   }
 }
 
+/** Rewrites missing trusted_roots paths to temporary placeholder files so validation can still run locally. */
 async function materializeMissingTrustedRoots(candidate: string, tempDir: string) {
   const replacements = new Map<string, string>();
   const lines = await Promise.all(
@@ -79,6 +86,7 @@ async function materializeMissingTrustedRoots(candidate: string, tempDir: string
   return lines.join("\n");
 }
 
+/** Default validator that shells out to `caddy validate` against a temporary candidate file. */
 export class CommandConfigValidator implements ConfigValidator {
   private commandTemplate: string;
 

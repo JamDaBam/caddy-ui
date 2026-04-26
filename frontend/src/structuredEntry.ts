@@ -1,3 +1,4 @@
+/** Guided editor schema for the narrow reverse-proxy entry shape the form can round-trip safely. */
 export interface StructuredEntryFields {
   hostnames: string[];
   acmeDirectoryUrl: string;
@@ -7,12 +8,14 @@ export interface StructuredEntryFields {
   tlsInsecureSkipVerify: boolean;
 }
 
+/** Parser result reports whether an entry can stay in guided mode or must fall back to raw editing. */
 export interface StructuredEntryParseResult {
   supported: boolean;
   fields: StructuredEntryFields | null;
   errors: string[];
 }
 
+/** Builder result used when the guided form regenerates raw directives for storage. */
 export interface BuildStructuredRawResult {
   valid: boolean;
   label: string;
@@ -29,6 +32,7 @@ export const emptyStructuredEntryFields: StructuredEntryFields = {
   tlsInsecureSkipVerify: false
 };
 
+/** Shared blank state for new guided entries and unsupported-entry recovery paths. */
 function createEmptyFields(): StructuredEntryFields {
   return {
     hostnames: [],
@@ -96,6 +100,7 @@ function countBraces(value: string): number {
   return depth;
 }
 
+/** Splits only top-level directives; nested or unbalanced shapes are rejected back to raw editing. */
 function splitTopLevelDirectives(raw: string): { chunks: string[]; error?: string } {
   const stripped = stripComments(raw);
   const lines = stripped
@@ -130,6 +135,7 @@ function splitTopLevelDirectives(raw: string): { chunks: string[]; error?: strin
   return { chunks };
 }
 
+/** Tokenizer is intentionally small and supports only whitespace, quotes, and brace-aware guided parsing. */
 function tokenize(body: string): string[] {
   const tokens: string[] = [];
   const source = stripComments(body);
@@ -172,6 +178,7 @@ function tokenize(body: string): string[] {
   return tokens;
 }
 
+/** Supports only `tls { issuer acme { ... } }`, which matches the current guided form fields. */
 function parseTlsChunk(chunk: string, fields: StructuredEntryFields): string[] {
   const match = chunk.match(/^tls\s*\{([\s\S]*)\}$/);
   if (!match) {
@@ -215,6 +222,7 @@ function parseTlsChunk(chunk: string, fields: StructuredEntryFields): string[] {
   return [];
 }
 
+/** Supports only a single upstream plus the optional `transport http { tls_insecure_skip_verify }` block. */
 function parseReverseProxyChunk(chunk: string, fields: StructuredEntryFields): string[] {
   const match = chunk.match(/^reverse_proxy\s+(\S+)(?:\s*\{([\s\S]*)\})?$/);
   if (!match) {
@@ -243,6 +251,7 @@ function parseReverseProxyChunk(chunk: string, fields: StructuredEntryFields): s
   return ["Only transport http { tls_insecure_skip_verify } is supported inside reverse_proxy blocks."];
 }
 
+/** Attempts a lossless parse into guided fields and deliberately rejects patterns the form cannot preserve. */
 export function parseStructuredEntry(label: string, raw: string): StructuredEntryParseResult {
   const fields = createEmptyFields();
   const { hostnames, errors: hostnameErrors } = normalizeHostnames(label);
@@ -300,6 +309,7 @@ export function parseStructuredEntry(label: string, raw: string): StructuredEntr
   };
 }
 
+/** Rebuilds the supported directive shape from form fields so saved entries still store raw Caddyfile text. */
 export function buildStructuredRaw(fields: StructuredEntryFields): BuildStructuredRawResult {
   const hostnames = fields.hostnames.map((hostname) => hostname.trim()).filter((hostname) => hostname.length > 0);
   const acmeDirectoryUrl = fields.acmeDirectoryUrl.trim();

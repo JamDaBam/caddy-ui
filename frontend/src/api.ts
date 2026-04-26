@@ -1,5 +1,6 @@
 import type { ApplyRequest, ApplyResponse, EntriesResponse, EntryInput, HealthResponse } from "@caddy-ui/shared";
 
+/** Converts backend JSON error payloads into thrown UI errors so callers can stay promise/error oriented. */
 async function readJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     headers: {
@@ -50,4 +51,3 @@ export function applyChanges(input: ApplyRequest): Promise<ApplyResponse> {
     body: JSON.stringify(input)
   });
 }
-
